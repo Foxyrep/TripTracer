@@ -1,0 +1,90 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: triptracer-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${TRIPTRACER_MYSQL_DATABASE:-triptracer}
+      MYSQL_USER: ${TRIPTRACER_MYSQL_USER:-triptracer}
+      MYSQL_PASSWORD: ${TRIPTRACER_MYSQL_PASSWORD:-triptracer_dev_password}
+      MYSQL_ROOT_PASSWORD: ${TRIPTRACER_MYSQL_ROOT_PASSWORD:-triptracer_root_password}
+    ports:
+      - "3306:3306"
+    command:
+      - --default-authentication-plugin=mysql_native_password
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
+    container_name: triptracer-elasticsearch
+    restart: unless-stopped
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "true"
+      ELASTIC_PASSWORD: ${TRIPTRACER_ELASTIC_PASSWORD:-triptracer_es_password}
+      ES_JAVA_OPTS: -Xms1g -Xmx1g
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -s -u elastic:$$ELASTIC_PASSWORD http://127.0.0.1:9200/_cluster/health | grep -q '\"status\"'",
+        ]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 40s
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: triptracer-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:RELEASE.2024-05-28T17-19-04Z
+    container_name: triptracer-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-triptracer}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-triptracer_minio_password}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+
+volumes:
+  mysql_data:
+  elasticsearch_data:
+  redis_data:
+  minio_data:
